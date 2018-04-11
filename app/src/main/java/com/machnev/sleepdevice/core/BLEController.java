@@ -5,6 +5,8 @@ import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
 import android.bluetooth.BluetoothGattCallback;
 import android.bluetooth.BluetoothGattCharacteristic;
+import android.bluetooth.BluetoothGattServer;
+import android.bluetooth.BluetoothGattService;
 import android.content.Context;
 import android.util.Log;
 import android.widget.Toast;
@@ -13,16 +15,14 @@ import java.util.Arrays;
 
 public class BLEController
 {
-    private BluetoothAdapter bluetoothAdapter;
+    private final BluetoothAdapter bluetoothAdapter;
+    private final String deviceAddr;
+
     private BluetoothGatt gatt;
 
-    public void setBluetoothAdapter(BluetoothAdapter bluetoothAdapter) {
+    public BLEController(BluetoothAdapter bluetoothAdapter, String deviceAddr) {
         this.bluetoothAdapter = bluetoothAdapter;
-    }
-
-    public  BLEScanner getScanner()
-    {
-        return new BLEScanner(bluetoothAdapter);
+        this.deviceAddr = deviceAddr;
     }
 
     public boolean isConnected()
@@ -30,10 +30,11 @@ public class BLEController
         return gatt != null;
     }
 
-    public boolean connectTo(BluetoothDevice device, Context context)
+    public boolean connect(Context context, BluetoothGattCallback callback)
     {
-        gatt = device.connectGatt(context, false, new GattCallback(context));
-        log("Connected to " + device.getName());
+        BluetoothDevice device = bluetoothAdapter.getRemoteDevice(deviceAddr);
+        gatt = device.connectGatt(context, false, callback);
+        log("Connecting to " + device.getName());
         return gatt != null;
     }
 
@@ -43,6 +44,7 @@ public class BLEController
             throw new IllegalStateException("Not connected");
         }
         gatt.disconnect();
+        log("Disconnected " + gatt.getDevice().getName());
         gatt = null;
         return true;
     }
@@ -54,34 +56,5 @@ public class BLEController
 
     private void log(String message) {
         Log.i(BLEController.class.getName(), message);
-    }
-
-    private class GattCallback extends BluetoothGattCallback {
-        private final Context context;
-
-        private GattCallback(Context context) {
-            this.context = context;
-        }
-
-
-        @Override
-        public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
-            log("State is changed. New state: " + newState);
-            super.onConnectionStateChange(gatt, status, newState);
-        }
-
-        @Override
-        public void onServicesDiscovered(BluetoothGatt gatt, int status) {
-            log("Services discovered. Status: " + status);
-            super.onServicesDiscovered(gatt, status);
-        }
-
-        @Override
-        public void onCharacteristicRead(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, int status) {
-            String charValue = Arrays.toString(characteristic.getValue());
-            log("Characteristic read. Value: " + charValue);
-            Toast.makeText(context, "Characteristic read: " + charValue, Toast.LENGTH_SHORT);
-            super.onCharacteristicRead(gatt, characteristic, status);
-        }
     }
 }

@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.machnev.sleepdevice">
 
@@ -27,12 +28,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".DeviceListActivity"
+        <activity
+            android:name=".DeviceListActivity"
             android:label="Select device to connect"
             android:parentActivityName=".MainActivity">
             <meta-data
                 android:name="android.support.PARENT_ACTIVITY"
-                android:value=".MainActivity"/>
+                android:value=".MainActivity" />
         </activity>
         <activity
             android:name=".StatusSettingsActivity"
@@ -42,5 +44,11 @@
                 android:name="android.support.PARENT_ACTIVITY"
                 android:value=".MainActivity" />
         </activity>
+
+        <service
+            android:name=".DeviceService"
+            android:enabled="true"
+            android:exported="true"></service>
     </application>
+
 </manifest>
