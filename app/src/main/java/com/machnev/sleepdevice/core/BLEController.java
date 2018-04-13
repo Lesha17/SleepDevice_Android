@@ -6,19 +6,11 @@ import android.bluetooth.BluetoothGatt;
 import android.bluetooth.BluetoothGattCallback;
 import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothGattDescriptor;
-import android.bluetooth.BluetoothGattServer;
 import android.bluetooth.BluetoothGattService;
 import android.content.Context;
-import android.os.Message;
-import android.os.Messenger;
-import android.os.RemoteException;
 import android.util.Log;
-import android.widget.Toast;
-
-import com.machnev.sleepdevice.DeviceService;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -28,7 +20,7 @@ public class BLEController
     private final String deviceAddr;
     private final Context context;
     private final BluetoothGattCallback callback = new GattCallback();
-    private final List<IValueListener> valueListeners = new ArrayList<>();
+    private final List<IControllerListener> valueListeners = new ArrayList<>();
 
     private BluetoothGatt gatt;
     private boolean isConnected;
@@ -69,11 +61,15 @@ public class BLEController
         log("Disconnected " + gatt.getDevice().getName());
     }
 
-    public void addValueListener(IValueListener listener) {
+    public boolean isOnBed(float value) {
+        return false; // TODO implement properly
+    }
+
+    public void addListener(IControllerListener listener) {
         valueListeners.add(listener);
     }
 
-    public void removecValueListener(IValueListener listener) {
+    public void removeListener(IControllerListener listener) {
         valueListeners.remove(listener);
     }
 
@@ -81,18 +77,18 @@ public class BLEController
         return !valueListeners.isEmpty();
     }
 
-    private void log(String message) {
-        Log.i(BLEController.class.getName(), message);
-    }
-
-    public static interface IValueListener {
-        public void onValueChanged(String newValue);
-    }
-
-    protected void notifyValueListeners(String value) {
-        for(IValueListener listener : valueListeners) {
+    protected void notifyValueListeners(float value) {
+        for(IControllerListener listener : valueListeners) {
             listener.onValueChanged(value);
         }
+    }
+
+    public static interface IControllerListener {
+        public void onValueChanged(float newValue);
+    }
+
+    private void log(String message) {
+        Log.i(BLEController.class.getName(), message);
     }
 
     private class GattCallback extends BluetoothGattCallback {
@@ -107,6 +103,7 @@ public class BLEController
                 // Any state in which gatt is not connected implies that isConnected is false
                 isConnected = false;
             }
+            log("Connection status changed. New status: " + status);
         }
 
         @Override
@@ -132,7 +129,7 @@ public class BLEController
 
         @Override
         public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic) {
-            String value = new String(characteristic.getValue());
+            float value = characteristic.getFloatValue(BluetoothGattCharacteristic.FORMAT_FLOAT, 0);
             log("Characteristic " + characteristic.getUuid() + " changed. New value: " + value);
 
             notifyValueListeners(value);
