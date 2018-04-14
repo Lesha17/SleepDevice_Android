@@ -24,6 +24,7 @@ import java.util.Collection;
 public class DeviceListActivity extends Activity {
 
     public static final String DEVICE_ADDRESS_RESULT = "com.machnev.sleepdevice.DeviceListActivity.DEVICE_ADDRESS_RESULT";
+    public static final String DEVICE_NAME_RESULT = "com.machnev.sleepdevice.DeviceListActivity.DEVICE_NAME_RESULT";
 
     private ViewGroup rootView;
 
@@ -105,10 +106,10 @@ public class DeviceListActivity extends Activity {
         @Override
         public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
             BluetoothDevice device = (BluetoothDevice) adapter.getItem(position);
-            String deviceAddr = device.getAddress();
 
             Intent intent = new Intent();
-            intent.putExtra(DEVICE_ADDRESS_RESULT, deviceAddr);
+            intent.putExtra(DEVICE_ADDRESS_RESULT, device.getAddress());
+            intent.putExtra(DEVICE_NAME_RESULT, device.getName());
             setResult(RESULT_OK, intent);
             finish();
         }

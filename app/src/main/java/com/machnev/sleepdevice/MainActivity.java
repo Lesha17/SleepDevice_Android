@@ -24,6 +24,8 @@ import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.machnev.sleepdevice.core.BLEDeviceViewModel;
+
 public class MainActivity extends Activity {
 
     private static final int REQUEST_STRANGE_BT_PERMISSIONS_CODE = 1;
@@ -31,6 +33,7 @@ public class MainActivity extends Activity {
     private static final int REQUEST_DEVICE_ADDR_CODE = 3;
 
     private static final String DEVICE_ADDRESS_KEY = "com.machnev.sleepdevice.MainActivity.DEVICE_ADDRESS_KEY";
+    private static final String DEVICE_NAME_KEY = "com.machnev.sleepdevice.MainActivity.DEVICE_NAME_KEY";
 
     private TextView connectionStatus;
     private TextView sensorValue;
@@ -42,9 +45,9 @@ public class MainActivity extends Activity {
     private Button configureOnBedButton;
 
 
-    private String deviceAddress;
     private boolean permissionGranted;
     private boolean bluetoothEnabled;
+    private BLEDeviceViewModel device;
     private boolean isConnected;
 
     private ProgressDialog connectingToDeviceDialog;
@@ -78,7 +81,7 @@ public class MainActivity extends Activity {
 
         if(isConnected) {
             setConnectedState();
-        } else if (deviceAddress != null) {
+        } else if (device != null) {
             setNotConnectedStateWithSavedDevice();
         } else {
             setNotConnectedState();
@@ -96,8 +99,9 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onSaveInstanceState(Bundle outState) {
-        if(deviceAddress != null) {
-            outState.putString(DEVICE_ADDRESS_KEY, deviceAddress);
+        if(device != null) {
+            outState.putString(DEVICE_ADDRESS_KEY, device.address);
+            outState.putString(DEVICE_NAME_KEY, device.name);
         }
 
         super.onSaveInstanceState(outState);
@@ -107,7 +111,9 @@ public class MainActivity extends Activity {
     protected void onRestoreInstanceState(Bundle savedInstanceState) {
         super.onRestoreInstanceState(savedInstanceState);
 
-        deviceAddress = savedInstanceState.getString(DEVICE_ADDRESS_KEY);
+        String deviceAddress = savedInstanceState.getString(DEVICE_ADDRESS_KEY);
+        String deviceName = savedInstanceState.getString(DEVICE_NAME_KEY);
+        device = new BLEDeviceViewModel(deviceAddress, deviceName);
     }
 
     @Override
@@ -157,7 +163,7 @@ public class MainActivity extends Activity {
         connectToThisDeviceButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                connectToDevice(deviceAddress);
+                connectToDevice(device.address);
             }
         });
     }
@@ -212,23 +218,23 @@ public class MainActivity extends Activity {
 
     private void setNotConnectedStateWithSavedDevice() {
         setNotConnectedState();
-        connectToThisDeviceButton.setText("Connect to " + deviceAddress);
+        connectToThisDeviceButton.setText("Connect to " + device.name);
         connectToThisDeviceButton.setVisibility(View.VISIBLE);
         connectToThisDeviceButton.setEnabled(true);
     }
 
     private void setConnectingState() {
-        connectionStatus.setText("Connecting to " + deviceAddress + "..");
+        connectionStatus.setText("Connecting to " + device.name + "..");
         connectingToDeviceDialog = ProgressDialog
                 .show(this, "Connecting to device..",
-                        "Connecting to device " + deviceAddress, true,
+                        "Connecting to device " + device.name, true,
                         false);
         isConnected = false;
     }
 
     private void setConnectedState() {
         isConnected = true;
-        connectionStatus.setText("Connected to " + deviceAddress);
+        connectionStatus.setText("Connected to " + device.name);
         connectingToDeviceDialog.dismiss();
         sensorValue.setVisibility(View.VISIBLE);
         onBedStatus.setVisibility(View.VISIBLE);
@@ -287,9 +293,11 @@ public class MainActivity extends Activity {
 
     private void startActivityForDeviceAddressCallback(int resultCode, Intent data) {
         if(resultCode == RESULT_OK) {
-            deviceAddress = data.getStringExtra(DeviceListActivity.DEVICE_ADDRESS_RESULT);
-            Log.i(MainActivity.class.getName(), "Obtained device addr: " + deviceAddress);
-            connectToDevice(deviceAddress);
+            String deviceAddress = data.getStringExtra(DeviceListActivity.DEVICE_ADDRESS_RESULT);
+            String deviceName = data.getStringExtra(DeviceListActivity.DEVICE_NAME_RESULT);
+            device = new BLEDeviceViewModel(deviceAddress, deviceName);
+            Log.i(MainActivity.class.getName(), "Obtained device addr: " + device.address);
+            connectToDevice(device.address);
         }
     }
 

@@ -10,8 +10,6 @@ import android.view.ViewGroup;
 import android.widget.BaseAdapter;
 import android.widget.TextView;
 
-import com.machnev.sleepdevice.core.BLEDevice;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
