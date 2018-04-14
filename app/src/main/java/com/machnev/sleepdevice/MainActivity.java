@@ -304,7 +304,6 @@ public class MainActivity extends Activity {
     private void disconnectDevice() {
         if(serviceConnection != null) {
             serviceConnection.sendRequest(DeviceService.STOP_LISTEN_SENSOR_NOTIFICATIONS);
-            serviceConnection.sendRequest(DeviceService.STOP_LISTEN_ONBED_NOTIFICATIONS);
         }
     }
 
@@ -314,11 +313,10 @@ public class MainActivity extends Activity {
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    if(msg.what == DeviceService.SENSOR_VALUE) {
+                    if(msg.what == DeviceService.SENSOR_VALUE_AND_ONBED_STATUS) {
                         Float value = (Float) msg.obj;
                         sensorValue.setText(value.toString());
-                    }
-                    if(msg.what == DeviceService.ON_BED_STATUS) {
+
                         int status = msg.arg1;
                         if(status == DeviceService.STATUS_ON_BED) {
                             onBedStatus.setText("On bed");
@@ -357,7 +355,6 @@ public class MainActivity extends Activity {
             source = new Messenger(new SensorValueHandler());
 
             sendRequest(DeviceService.REQUEST_SENSORS_NOTIFICATIONS);
-            //sendRequest(DeviceService.REQUEST_ONBED_NOTIFICATIONS);
         }
 
         @Override

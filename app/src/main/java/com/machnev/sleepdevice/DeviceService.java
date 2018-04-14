@@ -20,13 +20,10 @@ public class DeviceService extends Service {
 
     public static final int REQUEST_SENSORS_NOTIFICATIONS = 0;
     public static final int STOP_LISTEN_SENSOR_NOTIFICATIONS = 1;
-    public static final int REQUEST_ONBED_NOTIFICATIONS = 2;
-    public static final int STOP_LISTEN_ONBED_NOTIFICATIONS = 3;
 
     public static final int DEVICE_CONNECTED = 12;
     public static final int DEVICE_DISCONNECTED = 13;
-    public static final int ON_BED_STATUS = 14;
-    public static final int SENSOR_VALUE = 15;
+    public static final int SENSOR_VALUE_AND_ONBED_STATUS = 15;
 
     public static final int STATUS_NOT_ON_BED = 0;
     public static final int STATUS_ON_BED = 1;
@@ -34,8 +31,8 @@ public class DeviceService extends Service {
     private final Handler handler = new DeviceServiceHandler();
     private final Messenger messenger = new Messenger(handler);
     private final Map<String, BLEController> controllers = new HashMap<>();
-    private final Map<Messenger, BLEController.IDeviceValueListener> valueListeners = new HashMap<>();
-    private final Map<Messenger, BLEController.IDeviceValueListener> onBedStatusListeners = new HashMap<>();
+    private final Map<Messenger, BLEController.IDeviceListener> valueListeners = new HashMap<>();
+    private final Map<Messenger, BLEController.IDeviceListener> onBedStatusListeners = new HashMap<>();
 
     private BluetoothAdapter adapter;
 
@@ -58,10 +55,10 @@ public class DeviceService extends Service {
     @Override
     public boolean onUnbind(Intent intent) {
         for(BLEController controller : controllers.values()) {
-            for(BLEController.IDeviceValueListener listener : valueListeners.values()) {
+            for(BLEController.IDeviceListener listener : valueListeners.values()) {
                 removeControllerListener(controller, listener);
             }
-            for(BLEController.IDeviceValueListener listener : onBedStatusListeners.values()) {
+            for(BLEController.IDeviceListener listener : onBedStatusListeners.values()) {
                 removeControllerListener(controller, listener);
             }
         }
@@ -69,40 +66,29 @@ public class DeviceService extends Service {
         return super.onUnbind(intent);
     }
 
-    private BLEController.IDeviceValueListener getOrCreateValueListener(Messenger client) {
-        BLEController.IDeviceValueListener valueListener = valueListeners.get(client);
+    private BLEController.IDeviceListener getOrCreateValueListener(Messenger client, BLEController controller) {
+        BLEController.IDeviceListener valueListener = valueListeners.get(client);
         if(valueListener == null)
         {
-            valueListener = new ClientNotificationValueListener(client);
+            valueListener = new ClientNotificationValueListener(client, controller);
             valueListeners.put(client, valueListener);
         }
         return valueListener;
     }
 
-    private BLEController.IDeviceValueListener getOrCreateOnBedStatusListener(Messenger client, BLEController controller) {
-        BLEController.IDeviceValueListener onBedStatusListener = onBedStatusListeners.get(client);
-        if(onBedStatusListener == null)
-        {
-            onBedStatusListener = new ClientNotificationOnBedStatusLIstener(client,controller);
-            onBedStatusListeners.put(client, onBedStatusListener);
-        }
-        return onBedStatusListener;
-    }
-
-    private BLEController getConnectingController(BLEController.IDeviceConnectionListener deviceConnectionListener, String deviceAddress) {
+    private BLEController getConnectingController(String deviceAddress) {
         BLEController controller = controllers.get(deviceAddress);
         if(controller == null) {
             controller = new BLEController(adapter, deviceAddress, DeviceService.this);
             controllers.put(deviceAddress, controller);
         }
-        controller.addDeviceConnectionListener(deviceConnectionListener);
-        if(!controller.isConnected()) {
+        if(!controller.isConnecting()) {
             controller.connect();
         }
         return controller;
     }
 
-    private void removeControllerListener(BLEController controller, BLEController.IDeviceValueListener listener) {
+    private void removeControllerListener(BLEController controller, BLEController.IDeviceListener listener) {
         controller.removeValueListener(listener);
 
         if(!controller.hasValueListeners()) {
@@ -117,12 +103,8 @@ public class DeviceService extends Service {
                 case REQUEST_SENSORS_NOTIFICATIONS:
                     String deviceAddress = (String) msg.obj;
 
-                    BLEController.IDeviceConnectionListener deviceConnectionListener = new DeviceConnectionListener(msg.replyTo);
-                    BLEController controller = getConnectingController(deviceConnectionListener, deviceAddress);
-                    if(controller.isConnected()) {
-                        deviceConnectionListener.onConnected();
-                    }
-                    BLEController.IDeviceValueListener valueListener = getOrCreateValueListener(msg.replyTo);
+                    BLEController controller = getConnectingController(deviceAddress);
+                    BLEController.IDeviceListener valueListener = getOrCreateValueListener(msg.replyTo, controller);
                     controller.addValueListener(valueListener);
                     break;
                 case STOP_LISTEN_SENSOR_NOTIFICATIONS:
@@ -133,30 +115,9 @@ public class DeviceService extends Service {
                         valueListener = valueListeners.get(msg.replyTo);
                         if(valueListener != null) {
                             removeControllerListener(controller, valueListener);
+                            valueListener.onDisconnected();
                         }
                     }
-                case REQUEST_ONBED_NOTIFICATIONS:
-                    deviceAddress = (String) msg.obj;
-
-                    deviceConnectionListener = new DeviceConnectionListener(msg.replyTo);
-                    controller = getConnectingController(deviceConnectionListener, deviceAddress);
-                    if(controller.isConnected()) {
-                        deviceConnectionListener.onConnected();
-                    }
-                    BLEController.IDeviceValueListener onBedStatusListener = getOrCreateOnBedStatusListener(msg.replyTo, controller);
-                    controller.addValueListener(onBedStatusListener);
-                    break;
-                case STOP_LISTEN_ONBED_NOTIFICATIONS:
-                    deviceAddress = (String) msg.obj;
-
-                    controller = controllers.get(deviceAddress);
-                    if(controller != null) {
-                        onBedStatusListener = onBedStatusListeners.get(msg.replyTo);
-                        if(onBedStatusListener != null) {
-                            removeControllerListener(controller, onBedStatusListener);
-                        }
-                    }
-                    break;
                     default:
                         break;
             }
@@ -164,11 +125,35 @@ public class DeviceService extends Service {
         }
     }
 
-    private class DeviceConnectionListener implements BLEController.IDeviceConnectionListener {
+    private class ClientNotificationValueListener implements BLEController.IDeviceListener {
         private final Messenger client;
+        private final BLEController controller;
 
-        private DeviceConnectionListener(Messenger client) {
+        private ClientNotificationValueListener(Messenger client, BLEController controller) {
             this.client = client;
+            this.controller = controller;
+        }
+
+        @Override
+        public void onValueChanged(float newValue) {
+            Message message = Message.obtain(null, SENSOR_VALUE_AND_ONBED_STATUS);
+
+            message.obj = newValue;
+
+            int onBedStatus;
+            if(controller.isOnBed(newValue)) {
+                onBedStatus = STATUS_ON_BED;
+            } else {
+                onBedStatus = STATUS_NOT_ON_BED;
+            }
+            message.arg1 = onBedStatus;
+
+            message.replyTo = messenger;
+            try {
+                client.send(message);
+            } catch (RemoteException e) {
+                Log.e(DeviceService.class.getName(), e.getMessage(), e);
+            }
         }
 
         @Override
@@ -185,68 +170,6 @@ public class DeviceService extends Service {
         @Override
         public void onDisconnected() {
             Message message = Message.obtain(null, DEVICE_DISCONNECTED);
-            message.replyTo = messenger;
-            try {
-                client.send(message);
-            } catch (RemoteException e) {
-                Log.e(DeviceService.class.getName(), e.getMessage(), e);
-            }
-        }
-
-        @Override
-        public boolean equals(Object obj) {
-            if(obj instanceof DeviceConnectionListener) {
-                return client.equals(((DeviceConnectionListener) obj).client);
-            }
-            return false;
-        }
-
-        @Override
-        public int hashCode() {
-            return client.hashCode();
-        }
-    }
-
-    private class ClientNotificationValueListener implements BLEController.IDeviceValueListener {
-        private final Messenger client;
-
-        private ClientNotificationValueListener(Messenger client) {
-            this.client = client;
-        }
-
-        @Override
-        public void onValueChanged(float newValue) {
-            Message message = Message.obtain(null, SENSOR_VALUE, newValue);
-            message.replyTo = messenger;
-            try {
-                client.send(message);
-            } catch (RemoteException e) {
-                Log.e(DeviceService.class.getName(), e.getMessage(), e);
-            }
-
-        }
-    }
-
-    private class ClientNotificationOnBedStatusLIstener implements BLEController.IDeviceValueListener {
-        private final Messenger client;
-        private final BLEController controller;
-
-        private ClientNotificationOnBedStatusLIstener(Messenger client, BLEController controller) {
-            this.client = client;
-            this.controller = controller;
-        }
-
-        @Override
-        public void onValueChanged(float newValue) {
-            int onBedStatus;
-            if(controller.isOnBed(newValue)) {
-                onBedStatus = STATUS_ON_BED;
-            } else {
-                onBedStatus = STATUS_NOT_ON_BED;
-            }
-
-            Message message = Message.obtain(null, ON_BED_STATUS);
-            message.arg1 = onBedStatus;
             message.replyTo = messenger;
             try {
                 client.send(message);

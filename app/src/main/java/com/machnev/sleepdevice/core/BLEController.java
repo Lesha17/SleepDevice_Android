@@ -12,7 +12,6 @@ import android.util.Log;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -23,10 +22,11 @@ public class BLEController
     private final String deviceAddr;
     private final Context context;
     private final BluetoothGattCallback callback = new GattCallback();
-    private final List<IDeviceValueListener> valueListeners = new ArrayList<>();
-    private final List<IDeviceConnectionListener> deviceConnectionListeners = new ArrayList<>();
+    private final List<IDeviceListener> valueListeners = new ArrayList<>();
 
     private BluetoothGatt gatt;
+    private boolean isConnecting;
+
     private boolean isConnected;
 
     public BLEController(BluetoothAdapter bluetoothAdapter, String deviceAddr, Context context) {
@@ -35,16 +35,18 @@ public class BLEController
         this.context = context;
     }
 
-    public boolean isConnected()
+    public boolean isConnecting()
     {
-        return isConnected;
+        return isConnecting;
     }
 
     public void connect()
     {
-        if(isConnected()){
-            throw new IllegalStateException("Already connected");
+        if(isConnecting()){
+            return;
         }
+
+        isConnecting = true;
 
         if(gatt == null) {
             BluetoothDevice device = bluetoothAdapter.getRemoteDevice(deviceAddr);
@@ -57,23 +59,27 @@ public class BLEController
 
     public void disconnect()
     {
-        if(!isConnected()){
+        if(!isConnecting()){
             throw new IllegalStateException("Not connected");
         }
 
         gatt.disconnect();
-        log("Disconnected " + gatt.getDevice().getName());
+        log("Disconnecting " + gatt.getDevice().getName());
+        isConnecting = false;
     }
 
     public boolean isOnBed(float value) {
         return false; // TODO implement properly
     }
 
-    public void addValueListener(IDeviceValueListener listener) {
+    public void addValueListener(IDeviceListener listener) {
         valueListeners.add(listener);
+        if(isConnected) {
+            listener.onConnected();
+        }
     }
 
-    public void removeValueListener(IDeviceValueListener listener) {
+    public void removeValueListener(IDeviceListener listener) {
         valueListeners.remove(listener);
     }
 
@@ -81,40 +87,28 @@ public class BLEController
         return !valueListeners.isEmpty();
     }
 
-    public void addDeviceConnectionListener(IDeviceConnectionListener listener) {
-        if(!deviceConnectionListeners.contains(listener)) {
-            deviceConnectionListeners.add(listener);
-        }
-    }
-
-    public void removeDeiceConnectionListener(IDeviceConnectionListener listener) {
-        deviceConnectionListeners.remove(listener);
-    }
-
     protected void notifyValueListeners(float value) {
-        for(IDeviceValueListener listener : valueListeners) {
+        for(IDeviceListener listener : valueListeners) {
             listener.onValueChanged(value);
         }
     }
 
     protected void notifyDeviceConnected() {
-        for(IDeviceConnectionListener listener : deviceConnectionListeners) {
+        for(IDeviceListener listener : valueListeners) {
             listener.onConnected();
         }
     }
 
     protected void notifyDeviceDisconnected() {
-        for(IDeviceConnectionListener listener : deviceConnectionListeners) {
+        for(IDeviceListener listener : valueListeners) {
             listener.onDisconnected();
         }
     }
 
-    public static interface IDeviceValueListener {
+    public static interface IDeviceListener {
 
         public void onValueChanged(float newValue);
-    }
 
-    public static interface IDeviceConnectionListener {
         public void onConnected();
 
         public void onDisconnected();
@@ -134,15 +128,17 @@ public class BLEController
                 log("Connected to " + gatt.getDevice().getName() + " status");
                 log("Discover services: " + gatt.discoverServices());
             } else if (status == BluetoothGatt.STATE_CONNECTING) {
+                isConnected = false;
                 log("Connecting to " + gatt.getDevice().getName() + " status");
             } else if(status == BluetoothGatt.STATE_DISCONNECTING) {
+                isConnected = false;
                 log("Disconnecting: " + gatt.getDevice().getName()+ " status");
             }
             else if(status == BluetoothGatt.STATE_DISCONNECTED) {
                 // Any state in which gatt is not connected implies that isConnected is false
+                isConnected = false;
                 notifyDeviceDisconnected();
                 log("Disconnected: " + gatt.getDevice().getName() + " status");
-                isConnected = false;
             }
             log("Connection status changed. New status: " + status);
         }
