@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">SleepDevice</string>
     <string name="title_activity_status_settings">StatusSettingsActivity</string>
+    <string name="title_activity_scanning_for_devices_dialog">ScanningForDevicesDialogActivity</string>
 </resources>

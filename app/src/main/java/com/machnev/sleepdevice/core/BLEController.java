@@ -10,6 +10,9 @@ import android.bluetooth.BluetoothGattService;
 import android.content.Context;
 import android.util.Log;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -20,7 +23,8 @@ public class BLEController
     private final String deviceAddr;
     private final Context context;
     private final BluetoothGattCallback callback = new GattCallback();
-    private final List<IControllerListener> valueListeners = new ArrayList<>();
+    private final List<IDeviceValueListener> valueListeners = new ArrayList<>();
+    private final List<IDeviceConnectionListener> deviceConnectionListeners = new ArrayList<>();
 
     private BluetoothGatt gatt;
     private boolean isConnected;
@@ -65,11 +69,11 @@ public class BLEController
         return false; // TODO implement properly
     }
 
-    public void addListener(IControllerListener listener) {
+    public void addValueListener(IDeviceValueListener listener) {
         valueListeners.add(listener);
     }
 
-    public void removeListener(IControllerListener listener) {
+    public void removeValueListener(IDeviceValueListener listener) {
         valueListeners.remove(listener);
     }
 
@@ -77,14 +81,43 @@ public class BLEController
         return !valueListeners.isEmpty();
     }
 
+    public void addDeviceConnectionListener(IDeviceConnectionListener listener) {
+        if(!deviceConnectionListeners.contains(listener)) {
+            deviceConnectionListeners.add(listener);
+        }
+    }
+
+    public void removeDeiceConnectionListener(IDeviceConnectionListener listener) {
+        deviceConnectionListeners.remove(listener);
+    }
+
     protected void notifyValueListeners(float value) {
-        for(IControllerListener listener : valueListeners) {
+        for(IDeviceValueListener listener : valueListeners) {
             listener.onValueChanged(value);
         }
     }
 
-    public static interface IControllerListener {
+    protected void notifyDeviceConnected() {
+        for(IDeviceConnectionListener listener : deviceConnectionListeners) {
+            listener.onConnected();
+        }
+    }
+
+    protected void notifyDeviceDisconnected() {
+        for(IDeviceConnectionListener listener : deviceConnectionListeners) {
+            listener.onDisconnected();
+        }
+    }
+
+    public static interface IDeviceValueListener {
+
         public void onValueChanged(float newValue);
+    }
+
+    public static interface IDeviceConnectionListener {
+        public void onConnected();
+
+        public void onDisconnected();
     }
 
     private void log(String message) {
@@ -97,10 +130,18 @@ public class BLEController
         public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
             if(newState == BluetoothGatt.STATE_CONNECTED) {
                 isConnected = true;
-                log("Connected to " + gatt.getDevice().getName());
+                notifyDeviceConnected();
+                log("Connected to " + gatt.getDevice().getName() + " status");
                 log("Discover services: " + gatt.discoverServices());
-            } else {
+            } else if (status == BluetoothGatt.STATE_CONNECTING) {
+                log("Connecting to " + gatt.getDevice().getName() + " status");
+            } else if(status == BluetoothGatt.STATE_DISCONNECTING) {
+                log("Disconnecting: " + gatt.getDevice().getName()+ " status");
+            }
+            else if(status == BluetoothGatt.STATE_DISCONNECTED) {
                 // Any state in which gatt is not connected implies that isConnected is false
+                notifyDeviceDisconnected();
+                log("Disconnected: " + gatt.getDevice().getName() + " status");
                 isConnected = false;
             }
             log("Connection status changed. New status: " + status);
@@ -109,13 +150,36 @@ public class BLEController
         @Override
         public void onServicesDiscovered(BluetoothGatt gatt, int status) {
 
-            BluetoothGattService service = gatt.getService(UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e"));
-            BluetoothGattCharacteristic tx = service.getCharacteristic(UUID.fromString("6E400003-B5A3-F393-E0A9-E50E24DCCA9E"));
-            log("Set characteristic notification: " + gatt.setCharacteristicNotification(tx, true));
-            BluetoothGattDescriptor descriptor = tx.getDescriptor(UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"));
-            descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-            gatt.writeDescriptor(descriptor);
+            log("Total services count: " + gatt.getServices().size());
+            for(BluetoothGattService service : gatt.getServices()) {
+                log("Service: " + service.getUuid()
+                        + "; total included services: " + service.getIncludedServices().size()
+                        + "; total characteristics: " + service.getCharacteristics().size());
+                for(BluetoothGattService includedService : service.getIncludedServices())
+                {
+                    log("\tIncluded service: " + includedService.getUuid());
+                }
 
+                for(BluetoothGattCharacteristic characteristic : service.getCharacteristics())
+                {
+                    log("\tCharacteristic " + characteristic.getUuid() + "; total descriptors: " + characteristic.getDescriptors().size());
+                    for(BluetoothGattDescriptor descriptor : characteristic.getDescriptors())
+                    {
+                        log("\t\tDescriptor " + descriptor.getUuid());
+                    }
+                }
+            }
+
+            if(status == BluetoothGatt.GATT_SUCCESS) {
+                BluetoothGattService service = gatt.getService(UUID.fromString("6E400001-B5A3-F393-E0A9-E50E24DCCA9E"));
+                BluetoothGattCharacteristic tx = service.getCharacteristic(UUID.fromString("6E400003-B5A3-F393-E0A9-E50E24DCCA9E"));
+                log("Set characteristic notification: " + gatt.setCharacteristicNotification(tx, true));
+                BluetoothGattDescriptor descriptor = tx.getDescriptor(UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"));
+                descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+                gatt.writeDescriptor(descriptor);
+            } else {
+                log("Error discovering services");
+            }
             super.onServicesDiscovered(gatt, status);
         }
 
@@ -129,7 +193,8 @@ public class BLEController
 
         @Override
         public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic) {
-            float value = characteristic.getFloatValue(BluetoothGattCharacteristic.FORMAT_FLOAT, 0);
+            byte[] byteValue = characteristic.getValue();
+            float value = ByteBuffer.wrap(byteValue).order(ByteOrder.LITTLE_ENDIAN).getFloat();
             log("Characteristic " + characteristic.getUuid() + " changed. New value: " + value);
 
             notifyValueListeners(value);

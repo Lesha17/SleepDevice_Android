@@ -9,30 +9,52 @@
     tools:showIn="@layout/activity_main">
 
     <TextView
+        android:id="@+id/connection_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Not connected"
+        android:textSize="18pt"/>
+
+    <TextView
         android:id="@+id/sensor_value"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Hello World!"
-        android:textSize="32pt"/>
+        android:text="No data received from device"
+        android:textSize="18pt"/>
 
     <TextView
         android:id="@+id/on_bed_status"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Not on bed"
-        android:textSize="24pt"/>
+        android:textSize="18pt"/>
 
     <Button
-        android:id="@+id/choose_another_device"
+        android:id="@+id/connect_to_this_device"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|end"
-        android:layout_margin="@dimen/fab_margin"
-        android:src="@android:drawable/ic_menu_preferences"
-        android:text="Configure on bed"/>
+        android:layout_margin="16pt"
+        android:text=""/>
 
     <Button
-        android:id="@+id/fab"
+        android:id="@+id/connect_to_other_device"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="16pt"
+        android:text="Connect to other device"/>
+
+    <Button
+        android:id="@+id/disconnect"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="16pt"
+        android:text="Disconnect"/>
+
+    <Button
+        android:id="@+id/configure_on_bed"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|end"

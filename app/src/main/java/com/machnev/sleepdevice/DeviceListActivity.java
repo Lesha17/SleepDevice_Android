@@ -1,6 +1,7 @@
 package com.machnev.sleepdevice;
 
 import android.app.Activity;
+import android.app.ProgressDialog;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
@@ -24,14 +25,12 @@ public class DeviceListActivity extends Activity {
 
     public static final String DEVICE_ADDRESS_RESULT = "com.machnev.sleepdevice.DeviceListActivity.DEVICE_ADDRESS_RESULT";
 
-    private final static int REQUEST_ENABLE_BT = 1;
     private ViewGroup rootView;
 
-    private ProgressBar progressBar;
     private ListView listView;
     private DeviceLIstAdapter adapter;
 
-    private BluetoothAdapter bluetoothAdapter;
+    private ProgressDialog scanningForDevicesDialog;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -40,67 +39,38 @@ public class DeviceListActivity extends Activity {
         setContentView(R.layout.activity_device_list);
 
         configureRootView();
-        configureBluetooth();
     }
 
     @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        if(requestCode == REQUEST_ENABLE_BT) {
-            onEnableBluetoothResult();
-        }
+    protected void onStart() {
+        super.onStart();
 
-        super.onActivityResult(requestCode, resultCode, data);
+        scanBLE();
     }
 
     private void configureRootView()
     {
         rootView = findViewById(R.id.device_list_root);
 
-        configureProgressBar();
         configureListView();
     }
 
     private void configureListView()
     {
         listView = findViewById(R.id.listView);
-        listView.setEmptyView(progressBar);
         listView.setOnItemClickListener(new ListViewItemClick());
-    }
-
-    private void configureProgressBar()
-    {
-        // Create a progress bar to display while the list loads
-        progressBar = new ProgressBar(this);
-        progressBar.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
-        progressBar.setIndeterminate(true);
-        rootView.addView(progressBar);
-    }
-
-    private void  configureBluetooth()
-    {
-        BluetoothManager bluetoothManager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
-        bluetoothAdapter = bluetoothManager.getAdapter();
-        if(bluetoothAdapter == null) {
-            Toast.makeText(this, "Bluetooth is not supported", Toast.LENGTH_SHORT);
-            finish();
-            return;
-        }
-
-        if(bluetoothAdapter.isEnabled()) {
-            scanBLE();
-        } else {
-            Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-            startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
-        }
-    }
-
-    private void onEnableBluetoothResult() {
-        scanBLE();
     }
 
     private void scanBLE()
     {
+        BluetoothManager bluetoothManager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
+        BluetoothAdapter bluetoothAdapter = bluetoothManager.getAdapter();
         BLEScanner scanner = new BLEScanner(bluetoothAdapter);
+
+        scanningForDevicesDialog = ProgressDialog.show(this, "Scanning for devices..",
+                "", true,
+                false);
+
         scanner.scan(new BleScanningEndedCallback());
     }
 
@@ -113,6 +83,7 @@ public class DeviceListActivity extends Activity {
                 @Override
                 public void run() {
                     listView.setAdapter(adapter);
+                    scanningForDevicesDialog.dismiss();
                 }
             });
         }
