@@ -18,6 +18,12 @@ import java.util.UUID;
 
 public class BLEController
 {
+    private static final UUID SERVICE_UUID = UUID.fromString("a22b1352-4007-11e8-b467-0ed5f89f718b");
+    private static final UUID CHARACTERISTIC_SENSOR_VALUE = UUID.fromString("a22b15dc-4007-11e8-b467-0ed5f89f718b");
+    private static final UUID CHARACTERISTIC_ON_BED_VALUE = UUID.fromString("a22b1730-4007-11e8-b467-0ed5f89f718b");
+    private static final UUID CHARACTERISTIC_NOT_ON_BED_VALUE = UUID.fromString("a22b1852-4007-11e8-b467-0ed5f89f718b");
+
+
     private final BluetoothAdapter bluetoothAdapter;
     private final String deviceAddr;
     private final Context context;
@@ -28,6 +34,12 @@ public class BLEController
     private boolean isConnecting;
 
     private boolean isConnected;
+
+    private boolean isOnBedInitialized;
+    private float onBedValue;
+
+    private boolean isNotInBedInitialized;
+    private float notOnBedValue;
 
     public BLEController(BluetoothAdapter bluetoothAdapter, String deviceAddr, Context context) {
         this.bluetoothAdapter = bluetoothAdapter;
@@ -68,8 +80,12 @@ public class BLEController
         isConnecting = false;
     }
 
+    public boolean isOnBedInitialized() {
+        return isOnBedInitialized && isNotInBedInitialized;
+    }
+
     public boolean isOnBed(float value) {
-        return false; // TODO implement properly
+        return Math.abs(onBedValue - value) < Math.abs(notOnBedValue - value);
     }
 
     public void addValueListener(IDeviceListener listener) {
@@ -105,6 +121,17 @@ public class BLEController
         }
     }
 
+    protected void notifyDeviceNotSupported() {
+        for(IDeviceListener listener : valueListeners) {
+            listener.deviceNotSupported();
+        }
+    }
+
+    protected void deviceNotSupported() {
+        notifyDeviceNotSupported();
+        disconnect();
+    }
+
     public static interface IDeviceListener {
 
         public void onValueChanged(float newValue);
@@ -112,6 +139,8 @@ public class BLEController
         public void onConnected();
 
         public void onDisconnected();
+
+        public void deviceNotSupported();
     }
 
     private void log(String message) {
@@ -167,12 +196,21 @@ public class BLEController
             }
 
             if(status == BluetoothGatt.GATT_SUCCESS) {
-                BluetoothGattService service = gatt.getService(UUID.fromString("6E400001-B5A3-F393-E0A9-E50E24DCCA9E"));
-                BluetoothGattCharacteristic tx = service.getCharacteristic(UUID.fromString("6E400003-B5A3-F393-E0A9-E50E24DCCA9E"));
-                log("Set characteristic notification: " + gatt.setCharacteristicNotification(tx, true));
-                BluetoothGattDescriptor descriptor = tx.getDescriptor(UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"));
+                BluetoothGattService service = gatt.getService(SERVICE_UUID);
+                if(service == null) {
+                    deviceNotSupported();
+                }
+
+                BluetoothGattCharacteristic currentValueCharacteristic = service.getCharacteristic(CHARACTERISTIC_SENSOR_VALUE);
+                if(currentValueCharacteristic == null) {
+                    deviceNotSupported();
+                }
+
+                log("Set characteristic notification: " + gatt.setCharacteristicNotification(currentValueCharacteristic, true));
+                BluetoothGattDescriptor descriptor = currentValueCharacteristic.getDescriptor(UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"));
                 descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
                 gatt.writeDescriptor(descriptor);
+
             } else {
                 log("Error discovering services");
             }
@@ -181,19 +219,47 @@ public class BLEController
 
         @Override
         public void onCharacteristicRead(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, int status) {
-            String value = new String(characteristic.getValue());
-            log("Read characteristic " + characteristic.getUuid() + " completed. New value: " + value);
+            if(CHARACTERISTIC_ON_BED_VALUE.equals(characteristic.getUuid())) {
+                if(!isZeros(characteristic.getValue())) {
+                    isOnBedInitialized = true;
+                    float value = getFloat(characteristic);
+                    log("OnBed characteristic value: " + value);
+                    onBedValue = value;
+                }
+
+                BluetoothGattCharacteristic notOnBedValueCharacteristic = characteristic.getService().getCharacteristic(CHARACTERISTIC_NOT_ON_BED_VALUE);
+                if(notOnBedValueCharacteristic == null) {
+                    deviceNotSupported();
+                }
+                gatt.readCharacteristic(notOnBedValueCharacteristic);
+            }
+            if(CHARACTERISTIC_NOT_ON_BED_VALUE.equals(characteristic.getUuid())) {
+                if(!isZeros(characteristic.getValue())) {
+                    isNotInBedInitialized = true;
+                    float value = getFloat(characteristic);
+                    log("NotOnBed characteristic value: " + value);
+                    notOnBedValue = value;
+                }
+            }
 
             super.onCharacteristicRead(gatt, characteristic, status);
         }
 
         @Override
         public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic) {
-            byte[] byteValue = characteristic.getValue();
-            float value = ByteBuffer.wrap(byteValue).order(ByteOrder.LITTLE_ENDIAN).getFloat();
-            log("Characteristic " + characteristic.getUuid() + " changed. New value: " + value);
 
-            notifyValueListeners(value);
+            if(CHARACTERISTIC_SENSOR_VALUE.equals(characteristic.getUuid())) {
+                float value = getFloat(characteristic);
+                log("Characteristic " + characteristic.getUuid() + " changed. New value: " + value);
+
+                notifyValueListeners(value);
+
+                BluetoothGattCharacteristic onBedValueCharacteristic = characteristic.getService().getCharacteristic(CHARACTERISTIC_ON_BED_VALUE);
+                if(onBedValueCharacteristic == null) {
+                    deviceNotSupported();
+                }
+                gatt.readCharacteristic(onBedValueCharacteristic);
+            }
 
             super.onCharacteristicChanged(gatt, characteristic);
         }
@@ -204,6 +270,19 @@ public class BLEController
             log("Descriptor " + descriptor.getUuid() + " value: " + value);
 
             super.onDescriptorRead(gatt, descriptor, status);
+        }
+
+        private float getFloat(BluetoothGattCharacteristic characteristic) {
+            byte[] byteValue = characteristic.getValue();
+            return ByteBuffer.wrap(byteValue).order(ByteOrder.LITTLE_ENDIAN).getFloat();
+        }
+
+        private boolean isZeros(byte[] bytes) {
+            boolean result = true;
+            for(byte b : bytes) {
+                result &= (b == 0);
+            }
+            return  result;
         }
     }
 }

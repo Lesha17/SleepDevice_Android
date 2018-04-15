@@ -330,7 +330,10 @@ public class MainActivity extends Activity {
                             onBedStatus.setText("On bed");
                         } else if (status == DeviceService.STATUS_NOT_ON_BED) {
                             onBedStatus.setText("Not on bed");
+                        } else if (status == DeviceService.STATUS_NOT_INITIALIZED) {
+                            onBedStatus.setText("Please configure on bed / not on bed values to see if human is on bed or not on bed");
                         } else {
+                            Log.i(MainActivity.class.getName(), "So strange on bed status: " + status);
                             onBedStatus.setText("Undefined");
                         }
                     }
@@ -339,6 +342,9 @@ public class MainActivity extends Activity {
                     }
                     if(msg.what == DeviceService.DEVICE_DISCONNECTED) {
                         setNotConnectedStateWithSavedDevice();
+                    }
+                    if (msg.what == DeviceService.DEVICE_NOT_SUPPORTED) {
+                        Toast.makeText(MainActivity.this, "Device " + device.name + " is not supproted.", Toast.LENGTH_SHORT);
                     }
                 }
             });

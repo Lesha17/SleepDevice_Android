@@ -15,6 +15,7 @@ import com.machnev.sleepdevice.core.BLEController;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 public class DeviceService extends Service {
 
@@ -23,8 +24,10 @@ public class DeviceService extends Service {
 
     public static final int DEVICE_CONNECTED = 12;
     public static final int DEVICE_DISCONNECTED = 13;
+    public static final int DEVICE_NOT_SUPPORTED = 14;
     public static final int SENSOR_VALUE_AND_ONBED_STATUS = 15;
 
+    public static final int STATUS_NOT_INITIALIZED = -1;
     public static final int STATUS_NOT_ON_BED = 0;
     public static final int STATUS_ON_BED = 1;
 
@@ -136,40 +139,39 @@ public class DeviceService extends Service {
 
         @Override
         public void onValueChanged(float newValue) {
-            Message message = Message.obtain(null, SENSOR_VALUE_AND_ONBED_STATUS);
-
-            message.obj = newValue;
-
             int onBedStatus;
-            if(controller.isOnBed(newValue)) {
-                onBedStatus = STATUS_ON_BED;
+            if(controller.isOnBedInitialized()) {
+                if (controller.isOnBed(newValue)) {
+                    onBedStatus = STATUS_ON_BED;
+                } else {
+                    onBedStatus = STATUS_NOT_ON_BED;
+                }
             } else {
-                onBedStatus = STATUS_NOT_ON_BED;
+                onBedStatus = STATUS_NOT_INITIALIZED;
             }
-            message.arg1 = onBedStatus;
 
-            message.replyTo = messenger;
-            try {
-                client.send(message);
-            } catch (RemoteException e) {
-                Log.e(DeviceService.class.getName(), e.getMessage(), e);
-            }
+            sendMessage(SENSOR_VALUE_AND_ONBED_STATUS, onBedStatus, newValue);
         }
 
         @Override
         public void onConnected() {
-            Message message = Message.obtain(null, DEVICE_CONNECTED);
-            message.replyTo = messenger;
-            try {
-                client.send(message);
-            } catch (RemoteException e) {
-                Log.e(DeviceService.class.getName(), e.getMessage(), e);
-            }
+            sendMessage(DEVICE_CONNECTED, 0, null);
         }
 
         @Override
         public void onDisconnected() {
-            Message message = Message.obtain(null, DEVICE_DISCONNECTED);
+            sendMessage(DEVICE_DISCONNECTED, 0, null);
+        }
+
+        @Override
+        public void deviceNotSupported() {
+            sendMessage(DEVICE_NOT_SUPPORTED, 0, null);
+        }
+
+        private void sendMessage(int what, int arg, Object obj) {
+            Message message = Message.obtain(null, what);
+            message.arg1  = arg;
+            message.obj = obj;
             message.replyTo = messenger;
             try {
                 client.send(message);
