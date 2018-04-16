@@ -5,18 +5,11 @@ import android.app.Activity;
 import android.app.ProgressDialog;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothManager;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.IBinder;
-import android.os.Message;
-import android.os.Messenger;
-import android.os.RemoteException;
 import android.support.annotation.NonNull;
 import android.util.Log;
 import android.view.View;
@@ -31,9 +24,11 @@ public class MainActivity extends Activity {
     private static final int REQUEST_STRANGE_BT_PERMISSIONS_CODE = 1;
     private final static int REQUEST_ENABLE_BT = 2;
     private static final int REQUEST_DEVICE_ADDR_CODE = 3;
+    private static final int REQUEST_STATUS_SETTINGS = 4;
 
     private static final String DEVICE_ADDRESS_KEY = "com.machnev.sleepdevice.MainActivity.DEVICE_ADDRESS_KEY";
     private static final String DEVICE_NAME_KEY = "com.machnev.sleepdevice.MainActivity.DEVICE_NAME_KEY";
+    private static final String SHOULD_BE_CONNECTED_KEY = "com.machnev.sleepdevice.MainActivity.SHOULD_BE_CONNECTED_KEY";
 
     private TextView connectionStatus;
     private TextView sensorValue;
@@ -44,15 +39,15 @@ public class MainActivity extends Activity {
     private Button disconnectButton;
     private Button configureOnBedButton;
 
-
     private boolean permissionGranted;
     private boolean bluetoothEnabled;
     private BLEDeviceViewModel device;
+    private boolean shouldBeConnected;
     private boolean isConnected;
 
     private ProgressDialog connectingToDeviceDialog;
 
-    private DeviceServiceConnection serviceConnection;
+    private DeviceServiceBinding serviceBinding;
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
@@ -76,6 +71,15 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onStart() {
+        super.onStart();
+
+        if(shouldBeConnected && !isConnected && device != null) {
+            connectToDevice(device.address);
+        }
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
 
@@ -90,11 +94,14 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onStop() {
-        if(isConnected) {
-            disconnectDevice();
-        }
+        disconnectDevice();
 
         super.onStop();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
     }
 
     @Override
@@ -103,6 +110,7 @@ public class MainActivity extends Activity {
             outState.putString(DEVICE_ADDRESS_KEY, device.address);
             outState.putString(DEVICE_NAME_KEY, device.name);
         }
+        outState.putBoolean(SHOULD_BE_CONNECTED_KEY, shouldBeConnected);
 
         super.onSaveInstanceState(outState);
     }
@@ -114,6 +122,8 @@ public class MainActivity extends Activity {
         String deviceAddress = savedInstanceState.getString(DEVICE_ADDRESS_KEY);
         String deviceName = savedInstanceState.getString(DEVICE_NAME_KEY);
         device = new BLEDeviceViewModel(deviceAddress, deviceName);
+
+        shouldBeConnected = savedInstanceState.getBoolean(SHOULD_BE_CONNECTED_KEY);
     }
 
     @Override
@@ -125,7 +135,10 @@ public class MainActivity extends Activity {
             }
         }
         if(requestCode == REQUEST_DEVICE_ADDR_CODE) {
-            startActivityForDeviceAddressCallback(resultCode, data);
+            deviceAddressActivityResultCallback(resultCode, data);
+        }
+        if(requestCode == REQUEST_STATUS_SETTINGS) {
+            statusSettingActivityResultCallback(resultCode, data);
         }
 
         super.onActivityResult(requestCode, resultCode, data);
@@ -163,6 +176,7 @@ public class MainActivity extends Activity {
         connectToThisDeviceButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                shouldBeConnected = true;
                 connectToDevice(device.address);
             }
         });
@@ -183,6 +197,7 @@ public class MainActivity extends Activity {
         disconnectButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                shouldBeConnected = false;
                 disconnectDevice();
             }
         });
@@ -197,12 +212,6 @@ public class MainActivity extends Activity {
                 startStatusSettingActivity();
             }
         });
-    }
-
-    private void startStatusSettingActivity()
-    {
-        Intent intent = new Intent(this, StatusSettingsActivity.class);
-        startActivity(intent);
     }
 
     private void setNotConnectedState(){
@@ -225,17 +234,22 @@ public class MainActivity extends Activity {
 
     private void setConnectingState() {
         connectionStatus.setText("Connecting to " + device.name + "..");
-        connectingToDeviceDialog = ProgressDialog
-                .show(this, "Connecting to device..",
-                        "Connecting to device " + device.name, true,
-                        false);
+        if(connectingToDeviceDialog == null) {
+            connectingToDeviceDialog = ProgressDialog
+                    .show(this, "Connecting to device..",
+                            "Connecting to device " + device.name, true,
+                            false);
+        }
         isConnected = false;
     }
 
     private void setConnectedState() {
         isConnected = true;
         connectionStatus.setText("Connected to " + device.name);
-        connectingToDeviceDialog.dismiss();
+        if(connectingToDeviceDialog != null) {
+            connectingToDeviceDialog.dismiss();
+            connectingToDeviceDialog = null;
+        }
         sensorValue.setVisibility(View.VISIBLE);
         onBedStatus.setVisibility(View.VISIBLE);
         connectToThisDeviceButton.setEnabled(false);
@@ -291,8 +305,9 @@ public class MainActivity extends Activity {
         startActivityForResult(intent, REQUEST_DEVICE_ADDR_CODE);
     }
 
-    private void startActivityForDeviceAddressCallback(int resultCode, Intent data) {
+    private void deviceAddressActivityResultCallback(int resultCode, Intent data) {
         if(resultCode == RESULT_OK) {
+            shouldBeConnected = true;
             String deviceAddress = data.getStringExtra(DeviceListActivity.DEVICE_ADDRESS_RESULT);
             String deviceName = data.getStringExtra(DeviceListActivity.DEVICE_NAME_RESULT);
             device = new BLEDeviceViewModel(deviceAddress, deviceName);
@@ -301,89 +316,84 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void startStatusSettingActivity()
+    {
+        Intent intent = new Intent(this, StatusSettingsActivity.class);
+        intent.putExtra(StatusSettingsActivity.DEVICE_ADDRESS, device.address);
+        startActivityForResult(intent, REQUEST_STATUS_SETTINGS);
+    }
+
+    private void statusSettingActivityResultCallback(int resultCode, Intent data) {
+        if(resultCode == RESULT_OK) {
+            float onBed = data.getFloatExtra(StatusSettingsActivity.ON_BED, 0.0f);
+            float notOnBed = data.getFloatExtra(StatusSettingsActivity.NOT_ON_BED, 0.0f);
+        }
+    }
+
     private void connectToDevice(String deviceAddress) {
         setConnectingState();
 
-        Intent intent = new Intent(this, DeviceService.class);
-        serviceConnection = new DeviceServiceConnection(deviceAddress);
-        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
+        if(serviceBinding == null) {
+            serviceBinding = new DeviceServiceBinding(new DeviceServiceCallbacks());
+        }
+        serviceBinding.connect(this, deviceAddress);
     }
 
     private void disconnectDevice() {
-        if(serviceConnection != null) {
-            serviceConnection.sendRequest(DeviceService.STOP_LISTEN_SENSOR_NOTIFICATIONS);
+        if(serviceBinding != null) {
+            serviceBinding.disconnect();
         }
     }
 
-    private class SensorValueHandler extends Handler {
+    private class DeviceServiceCallbacks implements DeviceServiceBinding.DeviceServiceCallbacks {
+
         @Override
-        public void handleMessage(Message msg) {
+        public void onReceivedSensorValue(float value) {
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    if(msg.what == DeviceService.SENSOR_VALUE_AND_ONBED_STATUS) {
-                        Float value = (Float) msg.obj;
-                        sensorValue.setText(value.toString());
+                    sensorValue.setText(String.valueOf(value));
+                }
+            });
+        }
 
-                        int status = msg.arg1;
-                        if(status == DeviceService.STATUS_ON_BED) {
-                            onBedStatus.setText("On bed");
-                        } else if (status == DeviceService.STATUS_NOT_ON_BED) {
-                            onBedStatus.setText("Not on bed");
-                        } else if (status == DeviceService.STATUS_NOT_INITIALIZED) {
-                            onBedStatus.setText("Please configure on bed / not on bed values to see if human is on bed or not on bed");
-                        } else {
-                            Log.i(MainActivity.class.getName(), "So strange on bed status: " + status);
-                            onBedStatus.setText("Undefined");
-                        }
-                    }
-                    if(msg.what == DeviceService.DEVICE_CONNECTED) {
-                        setConnectedState();
-                    }
-                    if(msg.what == DeviceService.DEVICE_DISCONNECTED) {
-                        setNotConnectedStateWithSavedDevice();
-                    }
-                    if (msg.what == DeviceService.DEVICE_NOT_SUPPORTED) {
-                        Toast.makeText(MainActivity.this, "Device " + device.name + " is not supproted.", Toast.LENGTH_SHORT);
+        @Override
+        public void onReceivedOnBedStatus(int status) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if(status == DeviceService.STATUS_ON_BED) {
+                        onBedStatus.setText("On bed");
+                    } else if (status == DeviceService.STATUS_NOT_ON_BED) {
+                        onBedStatus.setText("Not on bed");
+                    } else if (status == DeviceService.STATUS_NOT_INITIALIZED) {
+                        onBedStatus.setText("Please configure on bed / not on bed values to see if human is on bed or not on bed");
+                    } else {
+                        Log.i(MainActivity.class.getName(), "So strange on bed status: " + status);
+                        onBedStatus.setText("Undefined");
                     }
                 }
             });
-
-            super.handleMessage(msg);
-        }
-    }
-
-    private class DeviceServiceConnection implements ServiceConnection {
-        private final String deviceAddress;
-
-        private Messenger deviceServiceMessenger;
-        private Messenger source;
-
-        private DeviceServiceConnection(String deviceAddress) {
-            this.deviceAddress = deviceAddress;
         }
 
         @Override
-        public void onServiceConnected(ComponentName name, IBinder service) {
-            deviceServiceMessenger = new Messenger(service);
-            source = new Messenger(new SensorValueHandler());
+        public void onStatusSet() {
 
-            sendRequest(DeviceService.REQUEST_SENSORS_NOTIFICATIONS);
         }
 
         @Override
-        public void onServiceDisconnected(ComponentName name) {
+        public void onDeviceConnected() {
+            setConnectedState();
+        }
+
+        @Override
+        public void onDeviceDisconnected() {
             setNotConnectedStateWithSavedDevice();
         }
 
-        public void sendRequest(int what){
-            Message message = Message.obtain(null, what, deviceAddress);
-            message.replyTo = source;
-            try {
-                deviceServiceMessenger.send(message);
-            } catch (RemoteException e) {
-                Log.e(MainActivity.class.getName(), e.getMessage(), e);
-            }
+        @Override
+        public void onDeviceNotSupported() {
+            Toast.makeText(MainActivity.this, "Device " + device.name + " is not supproted.", Toast.LENGTH_SHORT);
         }
     }
 }

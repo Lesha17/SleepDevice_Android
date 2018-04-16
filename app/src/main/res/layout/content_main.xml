@@ -34,33 +34,29 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|end"
-        android:layout_margin="16pt"
-        android:text=""/>
+        android:text="" />
 
     <Button
         android:id="@+id/connect_to_other_device"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|end"
-        android:layout_margin="16pt"
-        android:text="Connect to other device"/>
+        android:text="Connect to other device" />
 
     <Button
         android:id="@+id/disconnect"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|end"
-        android:layout_margin="16pt"
-        android:text="Disconnect"/>
+        android:text="Disconnect" />
 
     <Button
         android:id="@+id/configure_on_bed"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|end"
-        android:layout_margin="@dimen/fab_margin"
         android:src="@android:drawable/ic_menu_preferences"
-        android:text="Configure on bed"/>
+        android:text="Configure on bed" />
 
 
 

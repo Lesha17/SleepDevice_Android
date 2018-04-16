@@ -12,6 +12,7 @@ import android.os.RemoteException;
 import android.util.Log;
 
 import com.machnev.sleepdevice.core.BLEController;
+import com.machnev.sleepdevice.core.StatusSettingsData;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -21,11 +22,13 @@ public class DeviceService extends Service {
 
     public static final int REQUEST_SENSORS_NOTIFICATIONS = 0;
     public static final int STOP_LISTEN_SENSOR_NOTIFICATIONS = 1;
+    public static final int SET_STATUS_SETTINGS = 2;
 
     public static final int DEVICE_CONNECTED = 12;
     public static final int DEVICE_DISCONNECTED = 13;
     public static final int DEVICE_NOT_SUPPORTED = 14;
     public static final int SENSOR_VALUE_AND_ONBED_STATUS = 15;
+    public static final int STATUS_VALUES_SET = 16;
 
     public static final int STATUS_NOT_INITIALIZED = -1;
     public static final int STATUS_NOT_ON_BED = 0;
@@ -121,6 +124,17 @@ public class DeviceService extends Service {
                             valueListener.onDisconnected();
                         }
                     }
+                    break;
+                case SET_STATUS_SETTINGS:
+                    StatusSettingsData data = (StatusSettingsData) msg.obj;
+
+                    deviceAddress = data.deviceAddress;
+                    controller = controllers.get(deviceAddress);
+                    if(controller.isConnected()) {
+                        controller.setStatusValues(data.onBedValue, data.notBedValue);
+                    }
+
+                    break;
                     default:
                         break;
             }
@@ -151,6 +165,12 @@ public class DeviceService extends Service {
             }
 
             sendMessage(SENSOR_VALUE_AND_ONBED_STATUS, onBedStatus, newValue);
+        }
+
+        @Override
+        public void onNewStatusSettings(float onBedValue, float notOnBedValue) {
+            Log.i(DeviceService.class.getName(), "New values: " + onBedValue + ", " + notOnBedValue);
+            sendMessage(STATUS_VALUES_SET, 0, null);
         }
 
         @Override
