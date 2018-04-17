@@ -7,6 +7,7 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -65,6 +66,13 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        SharedPreferences preferences = getPreferences(MODE_PRIVATE);
+        String deviceAddr = preferences.getString(DEVICE_ADDRESS_KEY, null);
+        if(deviceAddr != null) {
+            String deviceName = preferences.getString(DEVICE_NAME_KEY, null);
+            device = new BLEDeviceViewModel(deviceAddr, deviceName);
+        }
+
         setContentView(R.layout.activity_main);
         configureElements();
     }
@@ -96,6 +104,14 @@ public class MainActivity extends Activity {
     @Override
     protected void onStop() {
         disconnectDevice();
+
+        if(device != null) {
+            SharedPreferences preferences = getPreferences(MODE_PRIVATE);
+            preferences.edit()
+                    .putString(DEVICE_ADDRESS_KEY, device.address)
+                    .putString(DEVICE_NAME_KEY, device.name)
+                    .apply();
+        }
 
         super.onStop();
     }
