@@ -31,10 +31,8 @@ public class DeviceServiceBinding {
     public void connect(Context context, String deviceAddress) {
         this.context = context;
 
-        Intent startingIntent = new Intent(context, DeviceService.class);
-        context.startService(startingIntent);
-
         Intent bindingIntent = new Intent(context, DeviceService.class);
+        bindingIntent.putExtra(DeviceService.DEVICE_ADDRESS, deviceAddress);
         serviceConnection = new DeviceServiceConnection(deviceAddress);
         context.bindService(bindingIntent, serviceConnection, Context.BIND_AUTO_CREATE);
     }
@@ -126,7 +124,7 @@ public class DeviceServiceBinding {
         }
 
         public void sendRequest(int what) {
-            sendRequest(what, deviceAddress);
+            sendRequest(what, null);
         }
 
         public void sendRequest(int what, Object obj){

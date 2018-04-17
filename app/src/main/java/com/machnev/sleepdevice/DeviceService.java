@@ -20,6 +20,8 @@ import java.util.Objects;
 
 public class DeviceService extends Service {
 
+    public static final String DEVICE_ADDRESS = "com.machnev.sleepdevice.DeviceService.DEVICE_ADDRESS";
+
     public static final int REQUEST_SENSORS_NOTIFICATIONS = 0;
     public static final int STOP_LISTEN_SENSOR_NOTIFICATIONS = 1;
     public static final int SET_STATUS_SETTINGS = 2;
@@ -36,7 +38,7 @@ public class DeviceService extends Service {
 
     private final Handler handler = new DeviceServiceHandler();
     private final Messenger messenger = new Messenger(handler);
-    private final Map<String, BLEController> controllers = new HashMap<>();
+    private BLEController controller;
     private final Map<Messenger, BLEController.IDeviceListener> valueListeners = new HashMap<>();
     private final Map<Messenger, BLEController.IDeviceListener> onBedStatusListeners = new HashMap<>();
 
@@ -54,22 +56,30 @@ public class DeviceService extends Service {
     }
 
     @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        initializeController(intent);
+
+        return super.onStartCommand(intent, flags, startId);
+    }
+
+    @Override
     public IBinder onBind(Intent intent) {
+        initializeController(intent);
         return messenger.getBinder();
     }
 
     @Override
     public boolean onUnbind(Intent intent) {
-        for(BLEController controller : controllers.values()) {
-            for(BLEController.IDeviceListener listener : valueListeners.values()) {
-                removeControllerListener(controller, listener);
-            }
-            for(BLEController.IDeviceListener listener : onBedStatusListeners.values()) {
-                removeControllerListener(controller, listener);
-            }
-        }
+        controller.disconnect();
 
         return super.onUnbind(intent);
+    }
+
+    private void initializeController(Intent intent) {
+        String deviceAddress = intent.getStringExtra(DEVICE_ADDRESS);
+
+        controller = new BLEController(adapter, deviceAddress, this);
+        controller.connect();
     }
 
     private BLEController.IDeviceListener getOrCreateValueListener(Messenger client, BLEController controller) {
@@ -82,58 +92,23 @@ public class DeviceService extends Service {
         return valueListener;
     }
 
-    private BLEController getConnectingController(String deviceAddress) {
-        BLEController controller = controllers.get(deviceAddress);
-        if(controller == null) {
-            controller = new BLEController(adapter, deviceAddress, DeviceService.this);
-            controllers.put(deviceAddress, controller);
-        }
-        if(!controller.isConnecting()) {
-            controller.connect();
-        }
-        return controller;
-    }
-
-    private void removeControllerListener(BLEController controller, BLEController.IDeviceListener listener) {
-        controller.removeValueListener(listener);
-
-        if(!controller.hasValueListeners()) {
-            controller.disconnect();
-        }
-    }
-
     private class DeviceServiceHandler extends Handler {
         @Override
         public void handleMessage(Message msg) {
             switch (msg.what) {
                 case REQUEST_SENSORS_NOTIFICATIONS:
-                    String deviceAddress = (String) msg.obj;
-
-                    BLEController controller = getConnectingController(deviceAddress);
                     BLEController.IDeviceListener valueListener = getOrCreateValueListener(msg.replyTo, controller);
                     controller.addValueListener(valueListener);
                     break;
                 case STOP_LISTEN_SENSOR_NOTIFICATIONS:
-                    deviceAddress = (String) msg.obj;
-
-                    controller = controllers.get(deviceAddress);
-                    if(controller != null) {
-                        valueListener = valueListeners.get(msg.replyTo);
-                        if(valueListener != null) {
-                            removeControllerListener(controller, valueListener);
-                            valueListener.onDisconnected();
-                        }
+                    valueListener = valueListeners.get(msg.replyTo);
+                    if(valueListener != null) {
+                        controller.removeValueListener(valueListener);
                     }
                     break;
                 case SET_STATUS_SETTINGS:
                     StatusSettingsData data = (StatusSettingsData) msg.obj;
-
-                    deviceAddress = data.deviceAddress;
-                    controller = controllers.get(deviceAddress);
-                    if(controller.isConnected()) {
-                        controller.setStatusValues(data.onBedValue, data.notBedValue);
-                    }
-
+                    controller.setStatusValues(data.onBedValue, data.notBedValue);
                     break;
                     default:
                         break;
@@ -181,11 +156,13 @@ public class DeviceService extends Service {
         @Override
         public void onDisconnected() {
             sendMessage(DEVICE_DISCONNECTED, 0, null);
+            stopSelf();
         }
 
         @Override
         public void deviceNotSupported() {
             sendMessage(DEVICE_NOT_SUPPORTED, 0, null);
+            stopSelf();
         }
 
         private void sendMessage(int what, int arg, Object obj) {

@@ -85,7 +85,6 @@ public class BLEController
 
         gatt.disconnect();
         log("Disconnecting " + gatt.getDevice().getName());
-        isConnecting = false;
     }
 
     public boolean isOnBedInitialized() {
@@ -181,19 +180,22 @@ public class BLEController
         @Override
         public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
             if(newState == BluetoothGatt.STATE_CONNECTED) {
+                isConnecting = true;
                 isConnected = true;
                 notifyDeviceConnected();
                 log("Connected to " + gatt.getDevice().getName() + " status");
                 log("Discover services: " + gatt.discoverServices());
             } else if (status == BluetoothGatt.STATE_CONNECTING) {
+                isConnecting = true;
                 isConnected = false;
                 log("Connecting to " + gatt.getDevice().getName() + " status");
             } else if(status == BluetoothGatt.STATE_DISCONNECTING) {
+                isConnecting = false;
                 isConnected = false;
                 log("Disconnecting: " + gatt.getDevice().getName()+ " status");
             }
             else if(status == BluetoothGatt.STATE_DISCONNECTED) {
-                // Any state in which gatt is not connected implies that isConnected is false
+                isConnecting = false;
                 isConnected = false;
                 notifyDeviceDisconnected();
                 log("Disconnected: " + gatt.getDevice().getName() + " status");
