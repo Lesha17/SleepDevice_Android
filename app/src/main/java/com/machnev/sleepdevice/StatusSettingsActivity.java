@@ -52,7 +52,7 @@ public class StatusSettingsActivity extends Activity {
 
     @Override
     protected void onStop() {
-        serviceBinding.disconnect();
+        serviceBinding.disconnect(false);
 
         super.onStop();
     }

@@ -31,7 +31,12 @@ public class MainActivity extends Activity {
 
     private static final String DEVICE_ADDRESS_KEY = "com.machnev.sleepdevice.MainActivity.DEVICE_ADDRESS_KEY";
     private static final String DEVICE_NAME_KEY = "com.machnev.sleepdevice.MainActivity.DEVICE_NAME_KEY";
+
+
+    private static final String DEVICE_KEY = "com.machnev.sleepdevice.MainActivity.DEVICE_KEY";
     private static final String SHOULD_BE_CONNECTED_KEY = "com.machnev.sleepdevice.MainActivity.SHOULD_BE_CONNECTED_KEY";
+    private static final String IS_CONNECTED_KEY = "com.machnev.sleepdevice.MainActivity.IS_CONNECTED_KEY";
+
 
     private TextView connectionStatus;
     private TextView sensorValue;
@@ -43,7 +48,6 @@ public class MainActivity extends Activity {
     private Button configureOnBedButton;
 
     private boolean permissionGranted;
-    private boolean bluetoothEnabled;
     private BLEDeviceViewModel device;
     private boolean shouldBeConnected;
     private boolean isConnected;
@@ -82,17 +86,19 @@ public class MainActivity extends Activity {
     @Override
     protected void onStart() {
         super.onStart();
-
-        if(shouldBeConnected && !isConnected && device != null) {
-            connectToDevice(device.address);
-        }
     }
 
     @Override
     protected void onResume() {
         super.onResume();
 
-        configureBluetooth();
+        if(!configureBluetooth()) {
+            return;
+        }
+
+        if(shouldBeConnected && device != null) {
+            connectToDevice(device.address);
+        }
 
         if(isConnected) {
             setConnectedState();
@@ -105,8 +111,6 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onStop() {
-        disconnectDevice();
-
         if(device != null) {
             SharedPreferences preferences = getPreferences(MODE_PRIVATE);
             preferences.edit()
@@ -120,16 +124,18 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        disconnect(isFinishing());
+
         super.onDestroy();
     }
 
     @Override
     protected void onSaveInstanceState(Bundle outState) {
         if(device != null) {
-            outState.putString(DEVICE_ADDRESS_KEY, device.address);
-            outState.putString(DEVICE_NAME_KEY, device.name);
+            outState.putParcelable(DEVICE_KEY, device);
         }
         outState.putBoolean(SHOULD_BE_CONNECTED_KEY, shouldBeConnected);
+        outState.putBoolean(IS_CONNECTED_KEY, isConnected);
 
         super.onSaveInstanceState(outState);
     }
@@ -138,18 +144,15 @@ public class MainActivity extends Activity {
     protected void onRestoreInstanceState(Bundle savedInstanceState) {
         super.onRestoreInstanceState(savedInstanceState);
 
-        String deviceAddress = savedInstanceState.getString(DEVICE_ADDRESS_KEY);
-        String deviceName = savedInstanceState.getString(DEVICE_NAME_KEY);
-        device = new BLEDeviceViewModel(deviceAddress, deviceName);
-
+        device = savedInstanceState.getParcelable(DEVICE_KEY);
         shouldBeConnected = savedInstanceState.getBoolean(SHOULD_BE_CONNECTED_KEY);
+        isConnected = savedInstanceState.getBoolean(IS_CONNECTED_KEY);
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if(requestCode == REQUEST_ENABLE_BT) {
             if(resultCode == RESULT_OK) {
-                bluetoothEnabled = true;
                 Log.i(MainActivity.class.getName(), "Bluetooth just has been enabled.");
             }
         }
@@ -192,11 +195,14 @@ public class MainActivity extends Activity {
 
     private void configureConnectToThisDeviceButton() {
         connectToThisDeviceButton = findViewById(R.id.connect_to_this_device);
+        if(device != null) {
+            connectToThisDeviceButton.setText("Connect to " + device.name);
+        }
         connectToThisDeviceButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 shouldBeConnected = true;
-                connectToDevice(device.address);
+                onResume();
             }
         });
     }
@@ -206,6 +212,7 @@ public class MainActivity extends Activity {
         connectToOtherDeviceButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                disconnect(true);
                 obtainDeviceAddressAndConnect();
             }
         });
@@ -216,8 +223,7 @@ public class MainActivity extends Activity {
         disconnectButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                shouldBeConnected = false;
-                disconnectDevice();
+                disconnect(true);
             }
         });
     }
@@ -246,7 +252,6 @@ public class MainActivity extends Activity {
 
     private void setNotConnectedStateWithSavedDevice() {
         setNotConnectedState();
-        connectToThisDeviceButton.setText("Connect to " + device.name);
         connectToThisDeviceButton.setVisibility(View.VISIBLE);
         connectToThisDeviceButton.setEnabled(true);
     }
@@ -277,20 +282,22 @@ public class MainActivity extends Activity {
         configureOnBedButton.setEnabled(true);
     }
 
-    private void configureBluetooth() {
+    private boolean configureBluetooth() {
         if(!permissionGranted) {
             if (Build.VERSION.SDK_INT >= 23 ) {
                 requestBLEPermissions();
-                return;
+                return false;
             } else {
                 permissionGranted = true;
             }
         }
 
-        if (!bluetoothEnabled){
+        if (!isBluetoothEnabled()){
             requestEnableBluetooth();
-            return;
+            return false;
         }
+
+        return  true;
     }
 
     @TargetApi(23)
@@ -311,12 +318,16 @@ public class MainActivity extends Activity {
             return;
         }
 
-        if(bluetoothAdapter.isEnabled()) {
-            bluetoothEnabled = true;
-        } else {
+        if(!isBluetoothEnabled()) {
             Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
             startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
         }
+    }
+
+    private boolean isBluetoothEnabled() {
+        BluetoothManager bluetoothManager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
+        BluetoothAdapter bluetoothAdapter = bluetoothManager.getAdapter();
+        return  bluetoothAdapter != null && bluetoothAdapter.isEnabled();
     }
 
     private void obtainDeviceAddressAndConnect() {
@@ -350,7 +361,9 @@ public class MainActivity extends Activity {
     }
 
     private void connectToDevice(String deviceAddress) {
-        setConnectingState();
+        if(!isConnected) {
+            setConnectingState();
+        }
 
         if(serviceBinding == null) {
             serviceBinding = new DeviceServiceBinding(new DeviceServiceCallbacks());
@@ -358,9 +371,10 @@ public class MainActivity extends Activity {
         serviceBinding.connect(this, deviceAddress);
     }
 
-    private void disconnectDevice() {
+    private void disconnect(boolean isFinishing) {
+        shouldBeConnected = !isFinishing;
         if(serviceBinding != null) {
-            serviceBinding.disconnect();
+            serviceBinding.disconnect(isFinishing);
         }
     }
 

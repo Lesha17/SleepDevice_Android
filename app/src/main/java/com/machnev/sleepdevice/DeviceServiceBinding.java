@@ -18,6 +18,9 @@ public class DeviceServiceBinding {
 
     private Context context;
     private DeviceServiceConnection serviceConnection;
+    private boolean isBound;
+
+    private boolean notifiedConnected;
 
     public DeviceServiceBinding(DeviceServiceCallbacks callbacks) {
         this.callbacks = callbacks;
@@ -27,10 +30,19 @@ public class DeviceServiceBinding {
     public void connect(Context context, String deviceAddress) {
         this.context = context;
 
-        Intent bindingIntent = new Intent(context, DeviceService.class);
-        bindingIntent.putExtra(DeviceService.DEVICE_ADDRESS, deviceAddress);
-        serviceConnection = new DeviceServiceConnection(deviceAddress);
-        context.bindService(bindingIntent, serviceConnection, Context.BIND_AUTO_CREATE);
+        Intent startIntet = new Intent(context, DeviceService.class);
+        startIntet.putExtra(DeviceService.DEVICE_ADDRESS, deviceAddress);
+        context.startService(startIntet);
+
+        if(!isBound) {
+            Intent bindingIntent = new Intent(context, DeviceService.class);
+            bindingIntent.putExtra(DeviceService.DEVICE_ADDRESS, deviceAddress);
+
+            serviceConnection = new DeviceServiceConnection(deviceAddress);
+            context.bindService(bindingIntent, serviceConnection, 0);
+            isBound = true;
+            notifiedConnected = false;
+        }
     }
 
     public void setStatusSettings(float onBedValue, float notOnBedValue) {
@@ -40,12 +52,19 @@ public class DeviceServiceBinding {
         }
     }
 
-    public void disconnect() {
+    public void disconnect(boolean isFinishing) {
         if(serviceConnection != null) {
-            serviceConnection.sendRequest(DeviceService.STOP_LISTEN_SENSOR_NOTIFICATIONS);
-            context.unbindService(serviceConnection);
-            serviceConnection = null;
-            callbacks.onDeviceDisconnected();
+            if(isBound) {
+                serviceConnection.sendRequest(DeviceService.STOP_LISTEN_SENSOR_NOTIFICATIONS);
+                context.unbindService(serviceConnection);
+                isBound = false;
+
+                if (isFinishing) {
+                    serviceConnection = null;
+                    context.stopService(new Intent(context, DeviceService.class));
+                    callbacks.onDeviceDisconnected();
+                }
+            }
         }
     }
 
@@ -73,6 +92,10 @@ public class DeviceServiceBinding {
                         Float value = (Float) msg.obj;
                         int status = msg.arg1;
 
+                        if(!notifiedConnected) {
+                            callbacks.onDeviceConnected();
+                            notifiedConnected = true;
+                        }
                         callbacks.onReceivedSensorValue(value);
                         callbacks.onReceivedOnBedStatus(status);
                     }
@@ -81,15 +104,20 @@ public class DeviceServiceBinding {
                     }
                     if(msg.what == DeviceService.DEVICE_CONNECTED) {
                         callbacks.onDeviceConnected();
+                        notifiedConnected = true;
                     }
                     if(msg.what == DeviceService.DEVICE_DISCONNECTED) {
                         callbacks.onDeviceDisconnected();
+                        notifiedConnected = false;
+                        disconnect(false);
                     }
                     if (msg.what == DeviceService.DEVICE_NOT_SUPPORTED) {
                         callbacks.onDeviceNotSupported();
+                        disconnect(false);
                     }
                     if(msg.what == DeviceService.CONNECTION_TIMEOUT) {
                         callbacks.onConnectionTimeout();
+                        disconnect(false);
                     }
 
             super.handleMessage(msg);
@@ -110,6 +138,7 @@ public class DeviceServiceBinding {
         public void onServiceConnected(ComponentName name, IBinder service) {
             deviceServiceMessenger = new Messenger(service);
             source = new Messenger(new SensorValueHandler());
+            isBound = true;
 
             sendRequest(DeviceService.REQUEST_SENSORS_NOTIFICATIONS);
         }
@@ -117,6 +146,13 @@ public class DeviceServiceBinding {
         @Override
         public void onServiceDisconnected(ComponentName name) {
             callbacks.onDeviceDisconnected();
+            isBound = false;
+        }
+
+        @Override
+        public void onBindingDied(ComponentName name) {
+            Log.i(DeviceServiceBinding.class.getName(), "Binding " + name + " died");
+            onServiceDisconnected(name);
         }
 
         public void sendRequest(int what) {

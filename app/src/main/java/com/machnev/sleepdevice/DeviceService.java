@@ -59,7 +59,7 @@ public class DeviceService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         initializeController(intent);
 
-        return super.onStartCommand(intent, flags, startId);
+        return START_STICKY;
     }
 
     @Override
@@ -70,9 +70,7 @@ public class DeviceService extends Service {
 
     @Override
     public boolean onUnbind(Intent intent) {
-        freeController();
-
-        return super.onUnbind(intent);
+        return true;
     }
 
     @Override
@@ -92,8 +90,10 @@ public class DeviceService extends Service {
     private void initializeController(Intent intent) {
         String deviceAddress = intent.getStringExtra(DEVICE_ADDRESS);
 
-        controller = new BLEController(adapter, deviceAddress, this, new ClientNotificationValueListener());
-        controller.connect();
+        if(controller == null) {
+            controller = new BLEController(adapter, deviceAddress, this, new ClientNotificationValueListener());
+            controller.connect();
+        }
     }
 
     private void freeController() {
@@ -172,11 +172,11 @@ public class DeviceService extends Service {
         }
 
         private void sendMessage(int what, int arg, Object obj) {
-            Message message = Message.obtain(null, what);
-            message.arg1  = arg;
-            message.obj = obj;
-            message.replyTo = messenger;
             for(Messenger client : listeners) {
+                Message message = Message.obtain(null, what);
+                message.arg1  = arg;
+                message.obj = obj;
+                message.replyTo = messenger;
                 try {
                     client.send(message);
                 } catch (RemoteException e) {

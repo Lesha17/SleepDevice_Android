@@ -202,11 +202,6 @@ public class BLEController
 
                 readStatusSettings();
 
-                log("Set characteristic notification: " + gatt.setCharacteristicNotification(currentValueCharacteristic, true));
-                BluetoothGattDescriptor descriptor = currentValueCharacteristic.getDescriptor(UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"));
-                descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-                gatt.writeDescriptor(descriptor);
-
             } else {
                 log("Error discovering services");
             }
@@ -221,10 +216,6 @@ public class BLEController
                 log("Characteristic " + characteristic.getUuid() + " changed. New value: " + value);
 
                 notifyValueListeners(value);
-            }
-
-            if(readingStatusSettingsCharacteristics) {
-                startReadStatusSettings();
             }
 
             super.onCharacteristicChanged(gatt, characteristic);
@@ -254,6 +245,11 @@ public class BLEController
                     if(readingStatusSettingsCharacteristics) {
                         readingStatusSettingsCharacteristics = false;
                         notifyNewStatusSettings();
+
+                        log("Set characteristic notification: " + gatt.setCharacteristicNotification(currentValueCharacteristic, true));
+                        BluetoothGattDescriptor descriptor = currentValueCharacteristic.getDescriptor(UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"));
+                        descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+                        gatt.writeDescriptor(descriptor);
                     }
                 }
             }
@@ -288,6 +284,7 @@ public class BLEController
 
         public void readStatusSettings() {
             readingStatusSettingsCharacteristics = true;
+            startReadStatusSettings();
         }
 
         public void writeStatusSettings(float onBedValue, float notOnBedValue) {
