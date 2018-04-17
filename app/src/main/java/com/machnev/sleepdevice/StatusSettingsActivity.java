@@ -148,7 +148,14 @@ public class StatusSettingsActivity extends Activity {
 
         @Override
         public void onDeviceNotSupported() {
-            Toast.makeText(StatusSettingsActivity.this, "Device not supported", Toast.LENGTH_SHORT);
+            CommonMessages.deviceIsNotSupported(StatusSettingsActivity.this);
+            setResult(RESULT_CANCELED);
+            finish();
+        }
+
+        @Override
+        public void onConnectionTimeout() {
+            CommonMessages.connectionTimeout(StatusSettingsActivity.this);
             setResult(RESULT_CANCELED);
             finish();
         }

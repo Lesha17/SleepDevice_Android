@@ -23,6 +23,9 @@ public class BLEController
     private static final UUID CHARACTERISTIC_ON_BED_VALUE = UUID.fromString("a22b1730-4007-11e8-b467-0ed5f89f718b");
     private static final UUID CHARACTERISTIC_NOT_ON_BED_VALUE = UUID.fromString("a22b1852-4007-11e8-b467-0ed5f89f718b");
 
+    private static final int CONNECTION_TIMEOUT = 10000;
+
+    private Thread couldNotConnectTimeoutThread;
 
     private final BluetoothAdapter bluetoothAdapter;
     private final String deviceAddr;
@@ -74,6 +77,20 @@ public class BLEController
         } else {
             gatt.connect();
         }
+        couldNotConnectTimeoutThread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Thread.sleep(CONNECTION_TIMEOUT);
+                } catch (InterruptedException e) {
+                    Log.e(BLEController.class.getName(), e.getMessage(), e);
+                }
+                if(!Thread.interrupted()) {
+                    couldNotConnect();
+                }
+            }
+        });
+        couldNotConnectTimeoutThread.start();
         log("Connecting to " + gatt.getDevice().getName());
     }
 
@@ -140,10 +157,22 @@ public class BLEController
         }
     }
 
+    protected void notifyCouldNotConnect() {
+        for(IDeviceListener listener : valueListeners) {
+            listener.couldNotConnect();
+        }
+    }
+
     protected void deviceNotSupported() {
         notifyDeviceNotSupported();
         disconnect();
     }
+
+    protected void couldNotConnect() {
+        notifyCouldNotConnect();
+        disconnect();
+    }
+
 
     public static interface IDeviceListener {
 
@@ -156,6 +185,8 @@ public class BLEController
         public void onDisconnected();
 
         public void deviceNotSupported();
+
+        public void couldNotConnect();
     }
 
     private void log(String message) {
@@ -180,6 +211,7 @@ public class BLEController
         @Override
         public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
             if(newState == BluetoothGatt.STATE_CONNECTED) {
+                couldNotConnectTimeoutThread.interrupt();
                 isConnecting = true;
                 isConnected = true;
                 notifyDeviceConnected();

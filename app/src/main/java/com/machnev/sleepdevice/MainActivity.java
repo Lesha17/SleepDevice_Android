@@ -2,10 +2,12 @@ package com.machnev.sleepdevice;
 
 import android.annotation.TargetApi;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.ProgressDialog;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothManager;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -409,8 +411,14 @@ public class MainActivity extends Activity {
         }
 
         @Override
+        public void onConnectionTimeout() {
+            setNotConnectedStateWithSavedDevice();
+            CommonMessages.connectionTimeout(MainActivity.this);
+        }
+
+        @Override
         public void onDeviceNotSupported() {
-            Toast.makeText(MainActivity.this, "Device " + device.name + " is not supproted.", Toast.LENGTH_SHORT);
+            CommonMessages.deviceIsNotSupported(MainActivity.this);
         }
     }
 }

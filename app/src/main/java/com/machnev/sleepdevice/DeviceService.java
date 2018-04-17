@@ -16,7 +16,6 @@ import com.machnev.sleepdevice.core.StatusSettingsData;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 
 public class DeviceService extends Service {
 
@@ -29,8 +28,9 @@ public class DeviceService extends Service {
     public static final int DEVICE_CONNECTED = 12;
     public static final int DEVICE_DISCONNECTED = 13;
     public static final int DEVICE_NOT_SUPPORTED = 14;
-    public static final int SENSOR_VALUE_AND_ONBED_STATUS = 15;
-    public static final int STATUS_VALUES_SET = 16;
+    public static final int CONNECTION_TIMEOUT = 15;
+    public static final int SENSOR_VALUE_AND_ONBED_STATUS = 16;
+    public static final int STATUS_VALUES_SET = 17;
 
     public static final int STATUS_NOT_INITIALIZED = -1;
     public static final int STATUS_NOT_ON_BED = 0;
@@ -162,6 +162,12 @@ public class DeviceService extends Service {
         @Override
         public void deviceNotSupported() {
             sendMessage(DEVICE_NOT_SUPPORTED, 0, null);
+            stopSelf();
+        }
+
+        @Override
+        public void couldNotConnect() {
+            sendMessage(CONNECTION_TIMEOUT, 0, null);
             stopSelf();
         }
 

@@ -10,11 +10,8 @@ import android.os.Message;
 import android.os.Messenger;
 import android.os.RemoteException;
 import android.util.Log;
-import android.widget.Toast;
 
 import com.machnev.sleepdevice.core.StatusSettingsData;
-
-import java.util.Objects;
 
 public class DeviceServiceBinding {
     private final DeviceServiceCallbacks callbacks;
@@ -64,6 +61,8 @@ public class DeviceServiceBinding {
         public void onDeviceDisconnected();
 
         public void onDeviceNotSupported();
+
+        public void onConnectionTimeout();
     }
 
     private class SensorValueHandler extends Handler {
@@ -91,6 +90,9 @@ public class DeviceServiceBinding {
                     if (msg.what == DeviceService.DEVICE_NOT_SUPPORTED) {
                         callbacks.onDeviceNotSupported();
                         disconnect();
+                    }
+                    if(msg.what == DeviceService.CONNECTION_TIMEOUT) {
+                        callbacks.onConnectionTimeout();
                     }
 
             super.handleMessage(msg);
