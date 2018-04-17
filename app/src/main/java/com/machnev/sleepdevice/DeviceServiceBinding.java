@@ -18,7 +18,6 @@ public class DeviceServiceBinding {
 
     private Context context;
     private DeviceServiceConnection serviceConnection;
-    private boolean isConnected;
 
     public DeviceServiceBinding(DeviceServiceCallbacks callbacks) {
         this.callbacks = callbacks;
@@ -44,8 +43,9 @@ public class DeviceServiceBinding {
     public void disconnect() {
         if(serviceConnection != null) {
             serviceConnection.sendRequest(DeviceService.STOP_LISTEN_SENSOR_NOTIFICATIONS);
-
             context.unbindService(serviceConnection);
+            serviceConnection = null;
+            callbacks.onDeviceDisconnected();
         }
     }
 
@@ -80,16 +80,13 @@ public class DeviceServiceBinding {
                         callbacks.onStatusSet();
                     }
                     if(msg.what == DeviceService.DEVICE_CONNECTED) {
-                        isConnected = true;
                         callbacks.onDeviceConnected();
                     }
                     if(msg.what == DeviceService.DEVICE_DISCONNECTED) {
-                        isConnected = false;
                         callbacks.onDeviceDisconnected();
                     }
                     if (msg.what == DeviceService.DEVICE_NOT_SUPPORTED) {
                         callbacks.onDeviceNotSupported();
-                        disconnect();
                     }
                     if(msg.what == DeviceService.CONNECTION_TIMEOUT) {
                         callbacks.onConnectionTimeout();
@@ -119,10 +116,7 @@ public class DeviceServiceBinding {
 
         @Override
         public void onServiceDisconnected(ComponentName name) {
-            if(isConnected) {
-                isConnected = false;
-                callbacks.onDeviceDisconnected();
-            }
+            callbacks.onDeviceDisconnected();
         }
 
         public void sendRequest(int what) {

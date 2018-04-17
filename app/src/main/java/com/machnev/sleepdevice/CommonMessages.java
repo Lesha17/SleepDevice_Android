@@ -3,6 +3,7 @@ package com.machnev.sleepdevice;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.widget.Toast;
 
 public class CommonMessages {
     public static void connectionTimeout(Context context) {
@@ -31,5 +32,9 @@ public class CommonMessages {
                         });
         AlertDialog alert = builder.create();
         alert.show();
+    }
+
+    public static void deviceDisconnected(Context context) {
+        Toast.makeText(context, "Device disconnected", Toast.LENGTH_SHORT).show();
     }
 }

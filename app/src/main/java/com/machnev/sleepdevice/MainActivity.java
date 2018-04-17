@@ -407,6 +407,7 @@ public class MainActivity extends Activity {
 
         @Override
         public void onDeviceDisconnected() {
+            CommonMessages.deviceDisconnected(MainActivity.this);
             setNotConnectedStateWithSavedDevice();
         }
 

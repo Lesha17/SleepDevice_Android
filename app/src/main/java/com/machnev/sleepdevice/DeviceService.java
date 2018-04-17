@@ -14,7 +14,9 @@ import android.util.Log;
 import com.machnev.sleepdevice.core.BLEController;
 import com.machnev.sleepdevice.core.StatusSettingsData;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class DeviceService extends Service {
@@ -39,9 +41,7 @@ public class DeviceService extends Service {
     private final Handler handler = new DeviceServiceHandler();
     private final Messenger messenger = new Messenger(handler);
     private BLEController controller;
-    private final Map<Messenger, BLEController.IDeviceListener> valueListeners = new HashMap<>();
-    private final Map<Messenger, BLEController.IDeviceListener> onBedStatusListeners = new HashMap<>();
-
+    private final List<Messenger> listeners = new ArrayList<>();
     private BluetoothAdapter adapter;
 
     @Override
@@ -70,26 +70,37 @@ public class DeviceService extends Service {
 
     @Override
     public boolean onUnbind(Intent intent) {
-        controller.disconnect();
+        freeController();
 
         return super.onUnbind(intent);
+    }
+
+    @Override
+    public void onRebind(Intent intent) {
+        super.onRebind(intent);
+
+        initializeController(intent);
+    }
+
+    @Override
+    public void onDestroy() {
+        freeController();
+
+        super.onDestroy();
     }
 
     private void initializeController(Intent intent) {
         String deviceAddress = intent.getStringExtra(DEVICE_ADDRESS);
 
-        controller = new BLEController(adapter, deviceAddress, this);
+        controller = new BLEController(adapter, deviceAddress, this, new ClientNotificationValueListener());
         controller.connect();
     }
 
-    private BLEController.IDeviceListener getOrCreateValueListener(Messenger client, BLEController controller) {
-        BLEController.IDeviceListener valueListener = valueListeners.get(client);
-        if(valueListener == null)
-        {
-            valueListener = new ClientNotificationValueListener(client, controller);
-            valueListeners.put(client, valueListener);
+    private void freeController() {
+        if(controller != null) {
+            controller.disconnect();
+            controller = null;
         }
-        return valueListener;
     }
 
     private class DeviceServiceHandler extends Handler {
@@ -97,14 +108,10 @@ public class DeviceService extends Service {
         public void handleMessage(Message msg) {
             switch (msg.what) {
                 case REQUEST_SENSORS_NOTIFICATIONS:
-                    BLEController.IDeviceListener valueListener = getOrCreateValueListener(msg.replyTo, controller);
-                    controller.addValueListener(valueListener);
+                    listeners.add(msg.replyTo);
                     break;
                 case STOP_LISTEN_SENSOR_NOTIFICATIONS:
-                    valueListener = valueListeners.get(msg.replyTo);
-                    if(valueListener != null) {
-                        controller.removeValueListener(valueListener);
-                    }
+                    listeners.remove(msg.replyTo);
                     break;
                 case SET_STATUS_SETTINGS:
                     StatusSettingsData data = (StatusSettingsData) msg.obj;
@@ -118,13 +125,6 @@ public class DeviceService extends Service {
     }
 
     private class ClientNotificationValueListener implements BLEController.IDeviceListener {
-        private final Messenger client;
-        private final BLEController controller;
-
-        private ClientNotificationValueListener(Messenger client, BLEController controller) {
-            this.client = client;
-            this.controller = controller;
-        }
 
         @Override
         public void onValueChanged(float newValue) {
@@ -176,10 +176,12 @@ public class DeviceService extends Service {
             message.arg1  = arg;
             message.obj = obj;
             message.replyTo = messenger;
-            try {
-                client.send(message);
-            } catch (RemoteException e) {
-                Log.e(DeviceService.class.getName(), e.getMessage(), e);
+            for(Messenger client : listeners) {
+                try {
+                    client.send(message);
+                } catch (RemoteException e) {
+                    Log.e(DeviceService.class.getName(), e.getMessage(), e);
+                }
             }
         }
     }

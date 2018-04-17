@@ -139,7 +139,7 @@ public class StatusSettingsActivity extends Activity {
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    Toast.makeText(StatusSettingsActivity.this, "Device disconnected", Toast.LENGTH_SHORT);
+                    CommonMessages.deviceDisconnected(StatusSettingsActivity.this);
                     setResult(RESULT_CANCELED);
                     finish();
                 }
